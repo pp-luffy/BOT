@@ -1,5 +1,10 @@
 name: 🎲 Standalone Quiz Bot
 
+# NEW: This queues requests so they run one by one, preventing Git collisions.
+concurrency: 
+  group: bot-queue
+  cancel-in-progress: false
+
 on:
   repository_dispatch:
     types: [trigger-agent]
@@ -9,10 +14,7 @@ on:
         description: 'Topic for the quiz'
         required: true
         type: string
-      chat_id:
-        description: 'Telegram Chat ID'
-        required: false
-        type: string
+# ... rest of the file remains exactly the same ...
 
 jobs:
   generate-quiz:
