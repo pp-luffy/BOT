@@ -12,6 +12,10 @@ def post_json(url, payload=None, headers=None, timeout=35):
     headers = headers or {}
     if "Content-Type" not in headers:
         headers["Content-Type"] = "application/json"
+    
+    # NEW: Trick Cloudflare into accepting the request by faking a standard User-Agent
+    if "User-Agent" not in headers:
+        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         
     data = json.dumps(payload).encode('utf-8') if payload else None
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
@@ -22,7 +26,6 @@ def post_json(url, payload=None, headers=None, timeout=35):
             try:
                 return response.getcode(), json.loads(body)
             except json.JSONDecodeError:
-                # Catch non-JSON successful responses
                 return response.getcode(), {"error": "Invalid JSON format", "raw_body": body[:200]}
                 
     except urllib.error.HTTPError as e:
@@ -30,7 +33,6 @@ def post_json(url, payload=None, headers=None, timeout=35):
         try:
             return e.code, json.loads(body)
         except json.JSONDecodeError:
-            # Catch HTML/Text error pages (like Cloudflare 502s)
             return e.code, {"error": "Non-JSON HTTP Error (likely HTML)", "raw_body": body[:200]}
             
     except Exception as e:
