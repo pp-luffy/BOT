@@ -51,7 +51,13 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git pull --rebase origin ${{ github.ref_name }} || true 
+          
+          # 1. Add and commit the new data FIRST
           git add -f usage_tracker.json
           git commit -m "chore: update API usage tracker [skip ci]" || echo "No usage changes to commit"
+          
+          # 2. THEN pull any new changes from the repository
+          git pull --rebase origin ${{ github.ref_name }} || true
+          
+          # 3. FINALLY, push back to GitHub
           git push origin HEAD:${{ github.ref_name }}
