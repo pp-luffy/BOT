@@ -12,15 +12,12 @@ today_str = datetime.now(IST).strftime('%Y-%m-%d')
 
 user_request = os.environ.get("USER_REQUEST", "").strip()
 chat_id = str(os.environ.get("INCOMING_CHAT_ID", "")).strip()
-allowed_chat_id = str(os.environ.get("ALLOWED_CHAT_ID", "")).strip()
 telegram_token = os.environ.get("TELEGRAM_TOKEN", "").strip()
 gemini_key = os.environ.get("AGENT_TOKEN", "").strip()
 groq_key = os.environ.get("GROQ_API_KEY", "").strip()
-
-# Parametrized Exam Name (default fallback if not set)
 exam_name = os.environ.get("EXAM_NAME", "Competitive Examination").strip()
 
-# --- 2. MULTI-MODEL USAGE TRACKER SETUP ---
+# --- 2. USAGE TRACKER SETUP ---
 tracker_file = "usage_tracker.json"
 usage_data = {
     "date": today_str,
@@ -48,17 +45,7 @@ if os.path.exists(tracker_file):
     except Exception:
         pass
 
-# --- 3. SECURITY: ZERO-FILE AUTHORIZATION ---
-if chat_id != allowed_chat_id:
-    print(f"⛔ Unauthorized access attempt from Chat ID: {chat_id}")
-    if telegram_token and chat_id:
-        requests.post(
-            f"https://api.telegram.org/bot{telegram_token}/sendMessage",
-            json={"chat_id": chat_id, "text": "⛔ Sorry, you are not authorized to use this bot."}
-        )
-    sys.exit(0)
-
-# --- 4. EXTRACT TOPIC ---
+# --- 3. EXTRACT TOPIC ---
 topic = re.sub(r'^\s*/random(?:@\w+)?\s*', '', user_request, flags=re.IGNORECASE).strip()
 if not topic:
     topic = "General Awareness & Concept Review"
@@ -69,7 +56,7 @@ if telegram_token and chat_id:
         json={"chat_id": chat_id, "text": f"⏳ *Drafting High-Difficulty Quiz on:* _{topic}_\n_Consulting AI Examiner..._", "parse_mode": "Markdown"}
     )
 
-# --- 5. SYSTEM PROMPT WITH VARIABLE EXAM NAME ---
+# --- 4. SYSTEM PROMPT WITH VARIABLE EXAM NAME ---
 system_prompt = f"""You are the most ruthless, expert question setter for the {exam_name}.
 Your task is to create ultra-high-difficulty, conceptually rigorous Multiple Choice Questions (MCQs) based on the user's prompt.
 
@@ -90,7 +77,7 @@ CRITICAL RULES:
   ]
 }}"""
 
-# --- 6. UNIFIED FALLBACK LIST (ALL 9 MODELS) ---
+# --- 5. UNIFIED FALLBACK LIST (ALL 9 MODELS) ---
 models_to_try = [
     ("gemini", "gemini-3.7-flash"),
     ("groq", "openai/gpt-oss-120b"),
@@ -163,7 +150,7 @@ if quiz_data and successful_model:
     with open(tracker_file, "w", encoding="utf-8") as f:
         json.dump(usage_data, f)
 
-# --- 7. DISPATCH QUIZ TO TELEGRAM ---
+# --- 6. DISPATCH QUIZ TO TELEGRAM ---
 if quiz_data and telegram_token and chat_id:
     for i, q in enumerate(quiz_data, 1):
         question_text = q.get("question", "").strip()
@@ -172,7 +159,6 @@ if quiz_data and telegram_token and chat_id:
         explanation = str(q.get("explanation", ""))[:190]
         poll_question = question_text
 
-        # Handle Telegram poll question limit (300 chars)
         if len(question_text) > 300:
             requests.post(
                 f"https://api.telegram.org/bot{telegram_token}/sendMessage",
