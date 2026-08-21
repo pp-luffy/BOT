@@ -1,0 +1,1 @@
+This is a personal automation project. I have made the code public for educational purposes, but I am not accepting Pull Requests or external contributions at this time. Any Pull Requests opened will be automatically closed.
