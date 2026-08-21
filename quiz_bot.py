@@ -18,9 +18,21 @@ def post_json(url, payload=None, headers=None, timeout=35):
     
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            return response.getcode(), json.loads(response.read().decode('utf-8'))
+            body = response.read().decode('utf-8')
+            try:
+                return response.getcode(), json.loads(body)
+            except json.JSONDecodeError:
+                # Catch non-JSON successful responses
+                return response.getcode(), {"error": "Invalid JSON format", "raw_body": body[:200]}
+                
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read().decode('utf-8'))
+        body = e.read().decode('utf-8')
+        try:
+            return e.code, json.loads(body)
+        except json.JSONDecodeError:
+            # Catch HTML/Text error pages (like Cloudflare 502s)
+            return e.code, {"error": "Non-JSON HTTP Error (likely HTML)", "raw_body": body[:200]}
+            
     except Exception as e:
         return 500, {"error": str(e)}
 
