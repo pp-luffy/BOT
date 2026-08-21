@@ -18,17 +18,10 @@ gemini_key = os.environ.get("AGENT_TOKEN", "").strip()
 groq_key = os.environ.get("GROQ_API_KEY", "").strip()
 exam_name = os.environ.get("EXAM_NAME", "Competitive Examination").strip()
 
-# --- 2. FAST AUTHORIZATION GATE ---
+# --- 2. LAYER 1: SILENT AUTHORIZATION GATE ---
+# If the Chat ID doesn't match, we do absolutely nothing and stop execution silently.
 if not chat_id or chat_id != allowed_chat_id:
-    print(f"⛔ Unauthorized access attempt from Chat ID: {chat_id}")
-    if telegram_token and chat_id:
-        try:
-            requests.post(
-                f"https://api.telegram.org/bot{telegram_token}/sendMessage",
-                json={"chat_id": chat_id, "text": "⛔ Sorry, you are not authorized to use this bot."}
-            )
-        except Exception:
-            pass
+    print(f"⛔ Unauthorized access attempt from Chat ID: {chat_id}. Stopping silently.")
     sys.exit(0)
 
 # --- 3. USAGE TRACKER SETUP ---
@@ -48,29 +41,86 @@ usage_data = {
     }
 }
 
-if os.path.exists(tracker_file):
+def load_tracker():
+    if os.path.exists(tracker_file):
+        try:
+            with open(tracker_file, "r", encoding="utf-8") as f:
+                saved_data = json.load(f)
+                if saved_data.get("date") == today_str:
+                    for model_key in usage_data["usage"]:
+                        if model_key in saved_data.get("usage", {}):
+                            usage_data["usage"][model_key] = saved_data["usage"][model_key]
+        except Exception:
+            pass
+
+def save_tracker():
+    with open(tracker_file, "w", encoding="utf-8") as f:
+        json.dump(usage_data, f)
+
+load_tracker()
+
+# --- 4. LAYER 2: LIGHTWEIGHT INTENT CHECKER ---
+# Strip bot commands. If it's just /start, default the text to "Hello" so it triggers a casual reply.
+clean_request = re.sub(r'^\s*/(?:start|quiz|random)(?:@\w+)?\s*', '', user_request, flags=re.IGNORECASE).strip()
+if not clean_request:
+    clean_request = "Hello"
+
+intent_prompt = f"""Analyze the user's message: "{clean_request}"
+Classify it into EXACTLY ONE of these categories:
+1. "casual": Greetings, thanks, general chat, or asking for help (e.g., 'hi', 'thank you', 'how are you').
+2. "quiz": Any educational topic, subject, or request for questions (e.g., 'Fundamental Rights', 'history', 'quiz me on science').
+
+Return ONLY valid JSON matching this structure:
+{{
+  "intent": "casual" or "quiz",
+  "reply": "If casual, write a short, friendly reply (max 10 words) like 'Hello! How can I help you today?'. If quiz, leave empty."
+}}"""
+
+intent = "quiz" # Default to quiz if the check fails
+casual_reply = "Hello! How can I help you study today?"
+
+print("🔄 Running lightweight intent check (gemini-3.1-flash-lite)...")
+if gemini_key:
     try:
-        with open(tracker_file, "r", encoding="utf-8") as f:
-            saved_data = json.load(f)
-            if saved_data.get("date") == today_str:
-                for model_key in usage_data["usage"]:
-                    if model_key in saved_data.get("usage", {}):
-                        usage_data["usage"][model_key] = saved_data["usage"][model_key]
-    except Exception:
-        pass
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={gemini_key}"
+        payload = {
+            "contents": [{"parts": [{"text": intent_prompt}]}],
+            "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"}
+        }
+        resp = requests.post(url, json=payload, timeout=15)
+        if resp.status_code == 200:
+            resp_json = resp.json()
+            raw_content = resp_json['candidates'][0]['content']['parts'][0]['text']
+            raw_content = re.sub(r'^```(?:json)?\n?|```$', '', raw_content.strip(), flags=re.IGNORECASE).strip()
+            parsed = json.loads(raw_content)
+            
+            intent = parsed.get("intent", "quiz").lower()
+            if parsed.get("reply"):
+                casual_reply = parsed.get("reply")
+                
+            # Log lightweight model usage
+            tokens_used = resp_json.get('usageMetadata', {}).get('totalTokenCount', 0)
+            usage_data["usage"]["gemini-3.1-flash-lite"]["tokens_used"] += tokens_used
+            usage_data["usage"]["gemini-3.1-flash-lite"]["requests_used"] += 1
+    except Exception as e:
+        print(f"⚠️ Intent check failed, defaulting to quiz: {e}")
 
-# --- 4. EXTRACT TOPIC ---
-# Strip standard bot commands (like /start or /quiz) if accidentally used, otherwise use exact text
-topic = re.sub(r'^\s*/(?:start|quiz|random)(?:@\w+)?\s*', '', user_request, flags=re.IGNORECASE).strip()
-if not topic:
-    topic = "General Awareness & Concept Review"
+# If casual, reply and exit immediately
+if intent == "casual":
+    requests.post(
+        f"https://api.telegram.org/bot{telegram_token}/sendMessage",
+        json={"chat_id": chat_id, "text": casual_reply}
+    )
+    save_tracker()
+    print("✅ Handled casually. Exiting.")
+    sys.exit(0)
 
+# --- 5. QUIZ GENERATION FLOW ---
 requests.post(
     f"https://api.telegram.org/bot{telegram_token}/sendMessage",
-    json={"chat_id": chat_id, "text": f"⏳ *Drafting High-Difficulty Quiz on:* _{topic}_\n_Consulting AI Examiner..._", "parse_mode": "Markdown"}
+    json={"chat_id": chat_id, "text": f"⏳ *Drafting High-Difficulty Quiz on:* _{clean_request}_\n_Consulting AI Examiner..._", "parse_mode": "Markdown"}
 )
 
-# --- 5. SYSTEM PROMPT WITH VARIABLE EXAM NAME ---
 system_prompt = f"""You are the most ruthless, expert question setter for the {exam_name}.
 Your task is to create ultra-high-difficulty, conceptually rigorous Multiple Choice Questions (MCQs) based on the user's prompt.
 
@@ -91,7 +141,7 @@ CRITICAL RULES:
   ]
 }}"""
 
-# --- 6. UNIFIED FALLBACK LIST (ALL 9 MODELS) ---
+# UNIFIED FALLBACK LIST (ALL 9 MODELS)
 models_to_try = [
     ("gemini", "gemini-3.7-flash"),
     ("groq", "openai/gpt-oss-120b"),
@@ -109,12 +159,12 @@ tokens_consumed_this_run = 0
 successful_model = None
 
 for provider, model in models_to_try:
-    print(f"🔄 Attempting generation with {model}...")
+    print(f"🔄 Attempting quiz generation with {model}...")
     
     if provider == "gemini" and gemini_key:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
         payload = {
-            "contents": [{"parts": [{"text": system_prompt + "\n\nTopic / Request: " + topic}]}],
+            "contents": [{"parts": [{"text": system_prompt + "\n\nTopic / Request: " + clean_request}]}],
             "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json"}
         }
         try:
@@ -137,7 +187,7 @@ for provider, model in models_to_try:
         headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
         payload = {
             "model": model,
-            "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Topic: {topic}"}],
+            "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Topic: {clean_request}"}],
             "response_format": {"type": "json_object"},
             "temperature": 0.3
         }
@@ -157,12 +207,11 @@ for provider, model in models_to_try:
         except Exception as e:
             print(f"⚠️ Error with {model}: {e}")
 
-# --- 7. SAVE USAGE & DISPATCH QUIZ ---
+# --- 6. SAVE USAGE & DISPATCH QUIZ ---
 if quiz_data and successful_model:
     usage_data["usage"][successful_model]["tokens_used"] += tokens_consumed_this_run
     usage_data["usage"][successful_model]["requests_used"] += 1
-    with open(tracker_file, "w", encoding="utf-8") as f:
-        json.dump(usage_data, f)
+    save_tracker()
 
     for i, q in enumerate(quiz_data, 1):
         question_text = q.get("question", "").strip()
