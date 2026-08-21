@@ -179,7 +179,7 @@ EXAM STYLE & QUALITY INSTRUCTIONS:
 4. Keep the actual options extremely short (e.g., "1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2") so they fit inside Telegram's strict limits.
 
 QUESTION COUNT INSTRUCTION:
-If the user specifies a count, you MUST produce EXACTLY that count (Max 10). Otherwise, produce 4 questions. DO NOT STOP EARLY.
+If the user specifies a count, you MUST produce EXACTLY that count (Max 15). Otherwise, produce 4 questions. DO NOT STOP EARLY.
 
 CRITICAL JSON RULES:
 1. Explanations strictly under 190 chars. Options strictly under 95 chars.
