@@ -31,9 +31,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      # NOTE: Dependency step removed entirely! Python script now runs natively.
-
-      # --- 🎲 RUN QUIZ GENERATOR (WITH BUILT-IN AUTH GATE) ---
+      # --- 🎲 RUN QUIZ GENERATOR ---
       - name: Run Quiz Generator
         env:
           AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
@@ -55,14 +53,3 @@ jobs:
           git add -f usage_tracker.json
           git commit -m "chore: update API usage tracker [skip ci]" || echo "No usage changes to commit"
           git push origin HEAD:${{ github.ref_name }}
-
-      # --- 🧹 FLUSH & RESET WEBHOOK ---
-      - name: Reset Webhook
-        if: always()
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-        run: |
-          curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=true"
-          sleep 2
-          curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook?url=${WEBHOOK_URL}"
