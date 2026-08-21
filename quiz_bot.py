@@ -29,7 +29,7 @@ if not chat_id or chat_id != allowed_chat_id:
             )
         except Exception:
             pass
-    sys.exit(0) # Exits cleanly so the tracker doesn't save and webhook resets properly
+    sys.exit(0)
 
 # --- 3. USAGE TRACKER SETUP ---
 tracker_file = "usage_tracker.json"
@@ -60,7 +60,8 @@ if os.path.exists(tracker_file):
         pass
 
 # --- 4. EXTRACT TOPIC ---
-topic = re.sub(r'^\s*/random(?:@\w+)?\s*', '', user_request, flags=re.IGNORECASE).strip()
+# Strip standard bot commands (like /start or /quiz) if accidentally used, otherwise use exact text
+topic = re.sub(r'^\s*/(?:start|quiz|random)(?:@\w+)?\s*', '', user_request, flags=re.IGNORECASE).strip()
 if not topic:
     topic = "General Awareness & Concept Review"
 
