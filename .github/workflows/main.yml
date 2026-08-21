@@ -1,0 +1,10 @@
+- name: 🧠 Run Quiz Generator
+        env:
+          AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ALLOWED_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EXAM_NAME: ${{ secrets.EXAM_NAME || 'Competitive Exam' }}
+          INCOMING_CHAT_ID: ${{ github.event.client_payload.chat_id || github.event.client_payload.telegram_chat_id || github.event.inputs.chat_id }}
+          USER_REQUEST: ${{ github.event.client_payload.message || github.event.client_payload.text || github.event.client_payload.prompt || github.event.inputs.prompt }}
+        run: python quiz_bot.py
