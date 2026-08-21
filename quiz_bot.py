@@ -122,10 +122,15 @@ clean_request = re.sub(r'^\s*/(?:start|quiz|random)(?:@\w+)?\s*', '', user_reque
 if not clean_request:
     clean_request = "Hello"
 
+# Fetch the current active exam so we can feed it into the context of the intent prompt
+current_saved_exam = usage_data.get("current_exam") or default_exam_name
+
 intent_prompt = f"""Analyze the user's message: "{clean_request}"
 Classify it into EXACTLY ONE of these categories:
 1. "quiz": Any educational topic, subject, or request for questions.
 2. "casual": Greetings, thanks, general chat, or asking for help.
+
+SYSTEM CONTEXT: The user's currently active exam setting is "{current_saved_exam}". If the user asks what exam they are set to, classify as "casual" and clearly tell them this exam name in the reply.
 
 Also, check if the user explicitly mentions studying for a specific exam, test, or certification (e.g., "UPSC", "JEE", "AWS", "SAT", "NEET").
 
@@ -159,7 +164,7 @@ if gemini_key:
             if parsed.get("reply"):
                 casual_reply = parsed.get("reply")
                 
-            # If a new exam name is detected, update our tracker memory
+            # If a new exam name is detected in this message, update our tracker memory
             extracted_exam = parsed.get("extracted_exam")
             if extracted_exam:
                 usage_data["current_exam"] = extracted_exam
@@ -182,7 +187,7 @@ if intent == "casual":
     sys.exit(0)
 
 # --- 5. QUIZ GENERATION FLOW ---
-# Determine active exam: dynamically stored JSON value > GitHub Secret fallback
+# Recalculate active exam: It may have just been updated during the intent check!
 active_exam_name = usage_data.get("current_exam") or default_exam_name
 
 tg_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
