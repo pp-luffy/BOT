@@ -1,10 +1,115 @@
-- name: 🧠 Run Quiz Generator
+name: 🎲 Standalone Quiz Bot
+
+on:
+  repository_dispatch:
+    types: [trigger-agent]
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Topic for the quiz'
+        required: true
+        type: string
+      chat_id:
+        description: 'Telegram Chat ID'
+        required: false
+        type: string
+
+jobs:
+  generate-quiz:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install requests
+
+      # --- GATEKEEPER: ZERO-DEPENDENCY AUTH CHECK ---
+      - name: 🔐 Fast Authorization Gate
+        id: auth_check
+        env:
+          INCOMING_CHAT_ID: ${{ github.event.client_payload.chat_id || github.event.client_payload.telegram_chat_id || github.event.inputs.chat_id }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          cat << 'EOF' > auth.py
+          import json, os, sys, urllib.request
+          
+          chat_id = str(os.environ.get("INCOMING_CHAT_ID", "")).strip()
+          token = os.environ.get("BOT_TOKEN", "")
+          
+          if not chat_id:
+              print("❌ ERROR: Chat ID is empty.")
+              sys.exit(1)
+          
+          try:
+              with open("users.json", "r", encoding="utf-8") as f:
+                  users = json.load(f)
+              
+              if chat_id not in users:
+                  if token and chat_id:
+                      try:
+                          req_user = urllib.request.Request(
+                              f"https://api.telegram.org/bot{token}/sendMessage",
+                              data=json.dumps({"chat_id": chat_id, "text": "⛔ Sorry, you are not authorized to use this bot."}).encode("utf-8"),
+                              headers={"Content-Type": "application/json"}
+                          )
+                          urllib.request.urlopen(req_user)
+                      except Exception: pass
+                  with open(os.environ["GITHUB_ENV"], "a") as env_f: env_f.write("IS_AUTHORIZED=false\n")
+                  sys.exit(0)
+              else:
+                  name = users[chat_id].get("name", "Unknown")
+                  with open(os.environ["GITHUB_ENV"], "a") as env_f:
+                      env_f.write("IS_AUTHORIZED=true\n")
+                      env_f.write(f"USER_NAME={name}\n")
+          except Exception:
+              with open(os.environ["GITHUB_ENV"], "a") as env_f:
+                  env_f.write("IS_AUTHORIZED=true\n")
+                  env_f.write("USER_NAME=Aspirant\n")
+          EOF
+          python auth.py
+          rm auth.py
+
+      # --- QUIZ GENERATOR ---
+      - name: 🎲 Run Quiz Generator
+        if: env.IS_AUTHORIZED == 'true'
         env:
           AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          ALLOWED_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          EXAM_NAME: ${{ secrets.EXAM_NAME || 'Competitive Exam' }}
+          EXAM_NAME: ${{ secrets.EXAM_NAME || 'Competitive Examination' }}
           INCOMING_CHAT_ID: ${{ github.event.client_payload.chat_id || github.event.client_payload.telegram_chat_id || github.event.inputs.chat_id }}
           USER_REQUEST: ${{ github.event.client_payload.message || github.event.client_payload.text || github.event.client_payload.prompt || github.event.inputs.prompt }}
         run: python quiz_bot.py
+
+      # --- UNIVERSAL USAGE TRACKER SAVE ---
+      - name: 💾 Save Daily Tracker
+        if: success() && env.IS_AUTHORIZED == 'true'
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin ${{ github.ref_name }} || true 
+          git add -f usage_tracker.json
+          git commit -m "chore: update API usage tracker [skip ci]" || echo "No usage changes to commit"
+          git push origin HEAD:${{ github.ref_name }}
+
+      # --- FLUSH & RESET WEBHOOK ---
+      - name: 🧹 Reset Webhook
+        if: always()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+        run: |
+          curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=true"
+          sleep 2
+          curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook?url=${WEBHOOK_URL}"
