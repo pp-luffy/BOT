@@ -13,7 +13,7 @@ def post_json(url, payload=None, headers=None, timeout=35):
     if "Content-Type" not in headers:
         headers["Content-Type"] = "application/json"
     
-    # NEW: Trick Cloudflare into accepting the request by faking a standard User-Agent
+    # Trick Cloudflare into accepting the request by faking a standard User-Agent
     if "User-Agent" not in headers:
         headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         
@@ -50,23 +50,11 @@ gemini_key = os.environ.get("AGENT_TOKEN", "").strip()
 groq_key = os.environ.get("GROQ_API_KEY", "").strip()
 exam_name = os.environ.get("EXAM_NAME", "Competitive Examination").strip()
 
-# --- 2. LAYER 1: SILENT AUTHORIZATION GATE ---
-if not chat_id or chat_id != allowed_chat_id:
-    print(f"⛔ Unauthorized access attempt from Chat ID: {chat_id}. Stopping silently.")
-    
-    # Send an alert to your personal/allowed Chat ID
-    if allowed_chat_id and telegram_token:
-        alert_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
-        alert_text = f"⚠️ *Unauthorized Access Attempt*\nAn unknown user with Chat ID `{chat_id}` just tried to use your bot.\n\n*Their message:* {user_request}"
-        post_json(alert_url, {"chat_id": allowed_chat_id, "text": alert_text, "parse_mode": "Markdown"})
-        
-    # Exit so the unauthorized user gets no response
-    sys.exit(0)
-
-# --- 3. USAGE TRACKER SETUP ---
+# --- 2. USAGE TRACKER SETUP ---
 tracker_file = "usage_tracker.json"
 usage_data = {
     "date": today_str,
+    "unauthorized_alerts": 0,  # Tracks alerts sent today to prevent spam
     "usage": {
         "openai/gpt-oss-120b": {"tokens_used": 0, "requests_used": 0},
         "openai/gpt-oss-20b": {"tokens_used": 0, "requests_used": 0},
@@ -86,6 +74,7 @@ def load_tracker():
             with open(tracker_file, "r", encoding="utf-8") as f:
                 saved_data = json.load(f)
                 if saved_data.get("date") == today_str:
+                    usage_data["unauthorized_alerts"] = saved_data.get("unauthorized_alerts", 0)
                     for model_key in usage_data["usage"]:
                         if model_key in saved_data.get("usage", {}):
                             usage_data["usage"][model_key] = saved_data["usage"][model_key]
@@ -96,7 +85,33 @@ def save_tracker():
     with open(tracker_file, "w", encoding="utf-8") as f:
         json.dump(usage_data, f)
 
+# Load the tracker early so the authorization gate can check the daily alert limit
 load_tracker()
+
+# --- 3. LAYER 1: SILENT AUTHORIZATION GATE ---
+if not chat_id or chat_id != allowed_chat_id:
+    print(f"⛔ Unauthorized access attempt from Chat ID: {chat_id}. Stopping silently.")
+    
+    alerts_sent = usage_data.get("unauthorized_alerts", 0)
+    
+    # Cap spam: only send a Telegram alert if we haven't hit the daily limit (e.g., 3 alerts)
+    if alerts_sent < 3:
+        if allowed_chat_id and telegram_token:
+            alert_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+            
+            # Sanitize input to prevent Markdown injection crashes
+            safe_request = user_request.replace('*', '').replace('_', '').replace('`', '').replace('[', '')
+            alert_text = f"⚠️ *Unauthorized Access Attempt*\nAn unknown user with Chat ID `{chat_id}` tried to access your bot.\n\n*Their message:* {safe_request}"
+            
+            post_json(alert_url, {"chat_id": allowed_chat_id, "text": alert_text, "parse_mode": "Markdown"})
+            
+        usage_data["unauthorized_alerts"] = alerts_sent + 1
+        save_tracker()
+    else:
+        print("🔇 Daily limit for unauthorized alerts reached. Suppressing Telegram notification to prevent spam.")
+        
+    # Exit silently so the unauthorized user gets no response
+    sys.exit(0)
 
 # --- 4. LAYER 2: LIGHTWEIGHT INTENT CHECKER ---
 clean_request = re.sub(r'^\s*/(?:start|quiz|random)(?:@\w+)?\s*', '', user_request, flags=re.IGNORECASE).strip()
@@ -105,8 +120,8 @@ if not clean_request:
 
 intent_prompt = f"""Analyze the user's message: "{clean_request}"
 Classify it into EXACTLY ONE of these categories:
-1. "casual": Greetings, thanks, general chat, or asking for help.
-2. "quiz": Any educational topic, subject, or request for questions.
+1. "quiz": Any educational topic, subject, or request for questions.
+2. "casual": Greetings, thanks, general chat, or asking for help.
 
 Return ONLY valid JSON matching this structure:
 {{
