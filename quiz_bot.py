@@ -162,25 +162,36 @@ if intent == "casual":
 # --- 5. QUIZ GENERATION FLOW ---
 active_exam_name = usage_data.get("current_exam") or default_exam_name
 tg_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
-post_json(tg_url, {"chat_id": chat_id, "text": f"⏳ *Drafting High-Difficulty Quiz on:* _{clean_request}_\n_Target Exam: {active_exam_name}..._", "parse_mode": "Markdown"})
+post_json(tg_url, {"chat_id": chat_id, "text": f"⏳ *Drafting Conceptual Quiz on:* _{clean_request}_\n_Target Exam: {active_exam_name}..._", "parse_mode": "Markdown"})
 
-system_prompt = f"""You are the most ruthless, expert question setter for the {active_exam_name}.
+# Injecting a random seed so identical requests yield completely new questions
+random_seed = int(time.time() * 1000)
+
+system_prompt = f"""You are the most ruthless and expert question setter for {active_exam_name}.
 Your task is to create ultra-high-difficulty, conceptually rigorous Multiple Choice Questions (MCQs) based on the user's prompt.
 
-QUESTION COUNT INSTRUCTION:
-If the user specifies a question count, you MUST produce EXACTLY that count (Max 10). DO NOT STOP EARLY. Otherwise, produce 4 questions.
+[GENERATION SEED: {random_seed} - Ensure completely NOVEL and non-repetitive outputs]
 
-CRITICAL RULES:
-1. Explanations strictly under 190 characters. Options under 95 characters.
-2. The `correct_option_id` MUST be a 0-based integer index (0 for the 1st option, 1 for the 2nd, 2 for the 3rd, 3 for the 4th).
+EXAM STYLE & QUALITY INSTRUCTIONS:
+1. STRICTLY AVOID basic factual, direct definition, or memory-based questions.
+2. Focus on conceptual clarity, multi-faceted analysis, interlinkages, and application of knowledge.
+3. For conceptual depth, place complex statements IN THE QUESTION BODY. Example: "Consider the following statements regarding [Topic]: 1. [Statement A] 2. [Statement B]. Which of the statements given above is/are correct?"
+4. Keep the actual options extremely short (e.g., "1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2") so they fit inside Telegram's strict limits.
+
+QUESTION COUNT INSTRUCTION:
+If the user specifies a count, you MUST produce EXACTLY that count (Max 10). Otherwise, produce 4 questions. DO NOT STOP EARLY.
+
+CRITICAL JSON RULES:
+1. Explanations strictly under 190 chars. Options strictly under 95 chars.
+2. `correct_option_id` MUST be a 0-based integer index (0, 1, 2, or 3).
 3. Return ONLY valid JSON matching this exact structure:
 {{
   "questions": [
     {{
-      "question": "Full question text...",
-      "options": ["First Option", "Second Option", "Third Option", "Fourth Option"],
-      "correct_option_id": 0, 
-      "explanation": "Brief explanation under 190 chars total."
+      "question": "Consider the following statements: 1. ... 2. ... Which is correct?",
+      "options": ["1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2"],
+      "correct_option_id": 2, 
+      "explanation": "Brief explanation validating why statement 1 and 2 are true/false under 190 chars total."
     }}
   ]
 }}"""
@@ -204,8 +215,8 @@ for provider, model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
         payload = {
             "contents": [{"parts": [{"text": system_prompt + "\n\nTopic / Request: " + clean_request}]}],
-            # Increased maxOutputTokens to give the AI room to finish all 10 questions
-            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 4096, "responseMimeType": "application/json"}
+            # Increased temperature to 0.75 for maximum creativity and variance
+            "generationConfig": {"temperature": 0.75, "maxOutputTokens": 4096, "responseMimeType": "application/json"}
         }
         status, resp_json = post_json(url, payload)
         if status == 200:
@@ -228,8 +239,8 @@ for provider, model in models_to_try:
             "model": model,
             "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Topic: {clean_request}"}],
             "response_format": {"type": "json_object"},
-            "temperature": 0.3,
-            "max_tokens": 4096 # Added max_tokens
+            "temperature": 0.75, # Increased temperature to 0.75
+            "max_tokens": 4096 
         }
         status, resp_json = post_json(url, payload, headers)
         if status == 200:
@@ -276,7 +287,7 @@ INPUT JSON TO VERIFY:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
             payload = {
                 "contents": [{"parts": [{"text": verify_prompt}]}],
-                # Increased maxOutputTokens
+                # Keep verification temperature at 0.1 so the checker relies on strict facts, not creativity
                 "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096, "responseMimeType": "application/json"}
             }
             status, resp_json = post_json(url, payload)
@@ -286,7 +297,7 @@ INPUT JSON TO VERIFY:
                     raw_content = re.sub(r'^```(?:json)?\n?|```$', '', raw_content.strip(), flags=re.IGNORECASE).strip()
                     parsed = json.loads(raw_content).get("questions", [])
                     if parsed:
-                        quiz_data = parsed  # Override with VERIFIED data
+                        quiz_data = parsed  
                         ver_tokens = resp_json.get('usageMetadata', {}).get('totalTokenCount', 0)
                         ver_model = model
                         print(f"✅ Verification successful ({len(quiz_data)} questions).")
@@ -302,7 +313,7 @@ INPUT JSON TO VERIFY:
                 "messages": [{"role": "system", "content": verify_prompt}],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.1,
-                "max_tokens": 4096 # Added max_tokens
+                "max_tokens": 4096
             }
             status, resp_json = post_json(url, payload, headers)
             if status == 200:
@@ -311,7 +322,7 @@ INPUT JSON TO VERIFY:
                     raw_content = re.sub(r'^```(?:json)?\n?|```$', '', raw_content.strip(), flags=re.IGNORECASE).strip()
                     parsed = json.loads(raw_content).get("questions", [])
                     if parsed:
-                        quiz_data = parsed  # Override with VERIFIED data
+                        quiz_data = parsed  
                         ver_tokens = resp_json.get('usage', {}).get('total_tokens', 0)
                         ver_model = model
                         print(f"✅ Verification successful ({len(quiz_data)} questions).")
@@ -321,10 +332,8 @@ INPUT JSON TO VERIFY:
 
 # --- 6. SAVE USAGE & DISPATCH QUIZ ---
 if quiz_data and gen_model:
-    # Update tracker with generation tokens
     usage_data["usage"][gen_model]["tokens_used"] += gen_tokens
     usage_data["usage"][gen_model]["requests_used"] += 1
-    # Update tracker with verification tokens
     if ver_model:
         if ver_model not in usage_data["usage"]:
             usage_data["usage"][ver_model] = {"tokens_used": 0, "requests_used": 0}
@@ -357,7 +366,7 @@ if quiz_data and gen_model:
         time.sleep(1.2)
         
     total_tokens = gen_tokens + ver_tokens
-    footer_text = f"✅ Generated {len(quiz_data)} questions using `{gen_model}`."
+    footer_text = f"✅ Generated {len(quiz_data)} conceptual questions using `{gen_model}`."
     if ver_model:
         footer_text += f"\n🔍 Verified by `{ver_model}`.\n*(Total tokens: {total_tokens})*"
     post_json(tg_url, {"chat_id": chat_id, "text": footer_text, "parse_mode": "Markdown"})
