@@ -201,13 +201,14 @@ If the user specifies a question count (e.g., "10 questions"), produce EXACTLY t
 
 CRITICAL RULES:
 1. Explanations strictly under 190 characters. Options under 95 characters.
-2. Return ONLY valid JSON matching this exact structure:
+2. The `correct_option_id` MUST be a 0-based integer index (0 for the 1st option, 1 for the 2nd, 2 for the 3rd, 3 for the 4th).
+3. Return ONLY valid JSON matching this exact structure:
 {{
   "questions": [
     {{
       "question": "Full question text...",
-      "options": ["A", "B", "C", "D"],
-      "correct_option_id": 1, 
+      "options": ["First Option", "Second Option", "Third Option", "Fourth Option"],
+      "correct_option_id": 0, 
       "explanation": "Brief explanation under 190 chars total."
     }}
   ]
