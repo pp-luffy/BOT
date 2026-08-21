@@ -140,7 +140,7 @@ if gemini_key:
         "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"}
     }
     
-    status, resp_json = post_json(url, payload, timeout=15)
+    status, resp_json = post_json(url, payload, timeout=25)
     
     if status == 200:
         try:
