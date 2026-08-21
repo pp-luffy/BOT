@@ -48,13 +48,14 @@ allowed_chat_id = str(os.environ.get("ALLOWED_CHAT_ID", "")).strip()
 telegram_token = os.environ.get("TELEGRAM_TOKEN", "").strip()
 gemini_key = os.environ.get("AGENT_TOKEN", "").strip()
 groq_key = os.environ.get("GROQ_API_KEY", "").strip()
-exam_name = os.environ.get("EXAM_NAME", "Competitive Examination").strip()
+default_exam_name = os.environ.get("EXAM_NAME", "Competitive Examination").strip()
 
 # --- 2. USAGE TRACKER SETUP ---
 tracker_file = "usage_tracker.json"
 usage_data = {
     "date": today_str,
     "unauthorized_alerts": 0,  # Tracks alerts sent today to prevent spam
+    "current_exam": None,      # Stores the dynamically detected exam name
     "usage": {
         "openai/gpt-oss-120b": {"tokens_used": 0, "requests_used": 0},
         "openai/gpt-oss-20b": {"tokens_used": 0, "requests_used": 0},
@@ -73,6 +74,10 @@ def load_tracker():
         try:
             with open(tracker_file, "r", encoding="utf-8") as f:
                 saved_data = json.load(f)
+                
+                # Always persist the current exam name, even if the date changes
+                usage_data["current_exam"] = saved_data.get("current_exam")
+                
                 if saved_data.get("date") == today_str:
                     usage_data["unauthorized_alerts"] = saved_data.get("unauthorized_alerts", 0)
                     for model_key in usage_data["usage"]:
@@ -85,7 +90,7 @@ def save_tracker():
     with open(tracker_file, "w", encoding="utf-8") as f:
         json.dump(usage_data, f)
 
-# Load the tracker early so the authorization gate can check the daily alert limit
+# Load tracker early to check limits and active exam
 load_tracker()
 
 # --- 3. LAYER 1: SILENT AUTHORIZATION GATE ---
@@ -110,10 +115,9 @@ if not chat_id or chat_id != allowed_chat_id:
     else:
         print("🔇 Daily limit for unauthorized alerts reached. Suppressing Telegram notification to prevent spam.")
         
-    # Exit silently so the unauthorized user gets no response
     sys.exit(0)
 
-# --- 4. LAYER 2: LIGHTWEIGHT INTENT CHECKER ---
+# --- 4. LAYER 2: LIGHTWEIGHT INTENT & EXAM CHECKER ---
 clean_request = re.sub(r'^\s*/(?:start|quiz|random)(?:@\w+)?\s*', '', user_request, flags=re.IGNORECASE).strip()
 if not clean_request:
     clean_request = "Hello"
@@ -123,10 +127,13 @@ Classify it into EXACTLY ONE of these categories:
 1. "quiz": Any educational topic, subject, or request for questions.
 2. "casual": Greetings, thanks, general chat, or asking for help.
 
+Also, check if the user explicitly mentions studying for a specific exam, test, or certification (e.g., "UPSC", "JEE", "AWS", "SAT", "NEET").
+
 Return ONLY valid JSON matching this structure:
 {{
   "intent": "casual" or "quiz",
-  "reply": "If casual, write a short, friendly reply. If quiz, leave empty."
+  "reply": "If casual, write a short, friendly reply. If quiz, leave empty.",
+  "extracted_exam": "Name of the exam if explicitly mentioned, otherwise null."
 }}"""
 
 intent = "quiz"
@@ -140,7 +147,7 @@ if gemini_key:
         "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"}
     }
     
-    status, resp_json = post_json(url, payload, timeout=25)
+    status, resp_json = post_json(url, payload, timeout=15)
     
     if status == 200:
         try:
@@ -151,6 +158,12 @@ if gemini_key:
             intent = parsed.get("intent", "quiz").lower()
             if parsed.get("reply"):
                 casual_reply = parsed.get("reply")
+                
+            # If a new exam name is detected, update our tracker memory
+            extracted_exam = parsed.get("extracted_exam")
+            if extracted_exam:
+                usage_data["current_exam"] = extracted_exam
+                save_tracker()
                 
             tokens_used = resp_json.get('usageMetadata', {}).get('totalTokenCount', 0)
             usage_data["usage"]["gemini-3.1-flash-lite"]["tokens_used"] += tokens_used
@@ -169,10 +182,13 @@ if intent == "casual":
     sys.exit(0)
 
 # --- 5. QUIZ GENERATION FLOW ---
-tg_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
-post_json(tg_url, {"chat_id": chat_id, "text": f"⏳ *Drafting High-Difficulty Quiz on:* _{clean_request}_\n_Consulting AI Examiner..._", "parse_mode": "Markdown"})
+# Determine active exam: dynamically stored JSON value > GitHub Secret fallback
+active_exam_name = usage_data.get("current_exam") or default_exam_name
 
-system_prompt = f"""You are the most ruthless, expert question setter for the {exam_name}.
+tg_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+post_json(tg_url, {"chat_id": chat_id, "text": f"⏳ *Drafting High-Difficulty Quiz on:* _{clean_request}_\n_Target Exam: {active_exam_name}..._", "parse_mode": "Markdown"})
+
+system_prompt = f"""You are the most ruthless, expert question setter for the {active_exam_name}.
 Your task is to create ultra-high-difficulty, conceptually rigorous Multiple Choice Questions (MCQs) based on the user's prompt.
 
 QUESTION COUNT INSTRUCTION:
