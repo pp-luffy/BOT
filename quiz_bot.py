@@ -13,7 +13,6 @@ def post_json(url, payload=None, headers=None, timeout=35):
     if "Content-Type" not in headers:
         headers["Content-Type"] = "application/json"
     
-    # Trick Cloudflare into accepting the request by faking a standard User-Agent
     if "User-Agent" not in headers:
         headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         
@@ -54,8 +53,8 @@ default_exam_name = os.environ.get("EXAM_NAME", "Competitive Examination").strip
 tracker_file = "usage_tracker.json"
 usage_data = {
     "date": today_str,
-    "unauthorized_alerts": 0,  # Tracks alerts sent today to prevent spam
-    "current_exam": None,      # Stores the dynamically detected exam name
+    "unauthorized_alerts": 0,
+    "current_exam": None,
     "usage": {
         "openai/gpt-oss-120b": {"tokens_used": 0, "requests_used": 0},
         "openai/gpt-oss-20b": {"tokens_used": 0, "requests_used": 0},
@@ -74,10 +73,7 @@ def load_tracker():
         try:
             with open(tracker_file, "r", encoding="utf-8") as f:
                 saved_data = json.load(f)
-                
-                # Always persist the current exam name, even if the date changes
                 usage_data["current_exam"] = saved_data.get("current_exam")
-                
                 if saved_data.get("date") == today_str:
                     usage_data["unauthorized_alerts"] = saved_data.get("unauthorized_alerts", 0)
                     for model_key in usage_data["usage"]:
@@ -90,31 +86,20 @@ def save_tracker():
     with open(tracker_file, "w", encoding="utf-8") as f:
         json.dump(usage_data, f)
 
-# Load tracker early to check limits and active exam
 load_tracker()
 
 # --- 3. LAYER 1: SILENT AUTHORIZATION GATE ---
 if not chat_id or chat_id != allowed_chat_id:
     print(f"⛔ Unauthorized access attempt from Chat ID: {chat_id}. Stopping silently.")
-    
     alerts_sent = usage_data.get("unauthorized_alerts", 0)
-    
-    # Cap spam: only send a Telegram alert if we haven't hit the daily limit (e.g., 3 alerts)
     if alerts_sent < 3:
         if allowed_chat_id and telegram_token:
             alert_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
-            
-            # Sanitize input to prevent Markdown injection crashes
             safe_request = user_request.replace('*', '').replace('_', '').replace('`', '').replace('[', '')
             alert_text = f"⚠️ *Unauthorized Access Attempt*\nAn unknown user with Chat ID `{chat_id}` tried to access your bot.\n\n*Their message:* {safe_request}"
-            
             post_json(alert_url, {"chat_id": allowed_chat_id, "text": alert_text, "parse_mode": "Markdown"})
-            
         usage_data["unauthorized_alerts"] = alerts_sent + 1
         save_tracker()
-    else:
-        print("🔇 Daily limit for unauthorized alerts reached. Suppressing Telegram notification to prevent spam.")
-        
     sys.exit(0)
 
 # --- 4. LAYER 2: LIGHTWEIGHT INTENT & EXAM CHECKER ---
@@ -122,9 +107,7 @@ clean_request = re.sub(r'^\s*/(?:start|quiz|random)(?:@\w+)?\s*', '', user_reque
 if not clean_request:
     clean_request = "Hello"
 
-# Fetch the current active exam so we can feed it into the context of the intent prompt
 current_saved_exam = usage_data.get("current_exam") or default_exam_name
-
 intent_prompt = f"""Analyze the user's message: "{clean_request}"
 Classify it into EXACTLY ONE of these categories:
 1. "quiz": Any educational topic, subject, or request for questions.
@@ -144,14 +127,12 @@ Return ONLY valid JSON matching this structure:
 intent = "quiz"
 casual_reply = "Hello! How can I help you study today?"
 
-print("🔄 Running lightweight intent check...")
 if gemini_key:
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={gemini_key}"
     payload = {
         "contents": [{"parts": [{"text": intent_prompt}]}],
         "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"}
     }
-    
     status, resp_json = post_json(url, payload, timeout=15)
     
     if status == 200:
@@ -159,37 +140,27 @@ if gemini_key:
             raw_content = resp_json['candidates'][0]['content']['parts'][0]['text']
             raw_content = re.sub(r'^```(?:json)?\n?|```$', '', raw_content.strip(), flags=re.IGNORECASE).strip()
             parsed = json.loads(raw_content)
-            
             intent = parsed.get("intent", "quiz").lower()
             if parsed.get("reply"):
                 casual_reply = parsed.get("reply")
-                
-            # If a new exam name is detected in this message, update our tracker memory
             extracted_exam = parsed.get("extracted_exam")
             if extracted_exam:
                 usage_data["current_exam"] = extracted_exam
                 save_tracker()
-                
             tokens_used = resp_json.get('usageMetadata', {}).get('totalTokenCount', 0)
             usage_data["usage"]["gemini-3.1-flash-lite"]["tokens_used"] += tokens_used
             usage_data["usage"]["gemini-3.1-flash-lite"]["requests_used"] += 1
-        except Exception as e:
-            print(f"⚠️ JSON parsing failed: {e}")
-    else:
-        print(f"⚠️ Intent API Error ({status}): {resp_json}. Defaulting to quiz.")
+        except Exception:
+            pass
 
-# If casual, reply and exit immediately
 if intent == "casual":
     tg_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
     post_json(tg_url, {"chat_id": chat_id, "text": casual_reply})
     save_tracker()
-    print("✅ Handled casually. Exiting.")
     sys.exit(0)
 
 # --- 5. QUIZ GENERATION FLOW ---
-# Recalculate active exam: It may have just been updated during the intent check!
 active_exam_name = usage_data.get("current_exam") or default_exam_name
-
 tg_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
 post_json(tg_url, {"chat_id": chat_id, "text": f"⏳ *Drafting High-Difficulty Quiz on:* _{clean_request}_\n_Target Exam: {active_exam_name}..._", "parse_mode": "Markdown"})
 
@@ -197,7 +168,7 @@ system_prompt = f"""You are the most ruthless, expert question setter for the {a
 Your task is to create ultra-high-difficulty, conceptually rigorous Multiple Choice Questions (MCQs) based on the user's prompt.
 
 QUESTION COUNT INSTRUCTION:
-If the user specifies a question count (e.g., "10 questions"), produce EXACTLY that count. Max 10. Otherwise, produce 4 questions.
+If the user specifies a question count, produce EXACTLY that count. Max 10. Otherwise, produce 4 questions.
 
 CRITICAL RULES:
 1. Explanations strictly under 190 characters. Options under 95 characters.
@@ -220,19 +191,15 @@ models_to_try = [
     ("gemini", "gemini-3.6-flash"),
     ("gemini", "gemini-3.5-flash"),
     ("groq", "qwen/qwen3.6-27b"),
-    ("groq", "openai/gpt-oss-20b"),
-    ("groq", "openai/gpt-oss-safeguard-20b"),
-    ("gemini", "gemini-3.5-flash-lite"),
-    ("gemini", "gemini-3.1-flash-lite")
+    ("groq", "openai/gpt-oss-20b")
 ]
 
 quiz_data = None
-tokens_consumed_this_run = 0
-successful_model = None
+gen_model = None
+gen_tokens = 0
 
 for provider, model in models_to_try:
-    print(f"🔄 Attempting quiz generation with {model}...")
-    
+    print(f"🔄 Attempting generation with {model}...")
     if provider == "gemini" and gemini_key:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
         payload = {
@@ -240,7 +207,6 @@ for provider, model in models_to_try:
             "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json"}
         }
         status, resp_json = post_json(url, payload)
-        
         if status == 200:
             try:
                 raw_content = resp_json['candidates'][0]['content']['parts'][0]['text']
@@ -248,14 +214,11 @@ for provider, model in models_to_try:
                 parsed = json.loads(raw_content).get("questions", [])
                 if parsed:
                     quiz_data = parsed
-                    tokens_consumed_this_run = resp_json.get('usageMetadata', {}).get('totalTokenCount', 0)
-                    successful_model = model
-                    print(f"✅ Success with {model}")
+                    gen_tokens = resp_json.get('usageMetadata', {}).get('totalTokenCount', 0)
+                    gen_model = model
                     break
-            except Exception as e:
-                print(f"⚠️ Parsing error with {model}: {e}")
-        else:
-            print(f"⚠️ API error with {model}: {resp_json}")
+            except Exception:
+                pass
 
     elif provider == "groq" and groq_key:
         url = "https://api.groq.com/openai/v1/chat/completions"
@@ -267,7 +230,6 @@ for provider, model in models_to_try:
             "temperature": 0.3
         }
         status, resp_json = post_json(url, payload, headers)
-        
         if status == 200:
             try:
                 raw_content = resp_json['choices'][0]['message']['content']
@@ -275,19 +237,94 @@ for provider, model in models_to_try:
                 parsed = json.loads(raw_content).get("questions", [])
                 if parsed:
                     quiz_data = parsed
-                    tokens_consumed_this_run = resp_json.get('usage', {}).get('total_tokens', 0)
-                    successful_model = model
-                    print(f"✅ Success with {model}")
+                    gen_tokens = resp_json.get('usage', {}).get('total_tokens', 0)
+                    gen_model = model
                     break 
-            except Exception as e:
-                print(f"⚠️ Parsing error with {model}: {e}")
-        else:
-            print(f"⚠️ API error with {model}: {resp_json}")
+            except Exception:
+                pass
+
+# --- 5.5 LAYER: VERIFICATION AND CORRECTION LOOP ---
+ver_model = None
+ver_tokens = 0
+
+if quiz_data and gen_model:
+    post_json(tg_url, {"chat_id": chat_id, "text": "🔍 *Verifying answers for factual accuracy...*", "parse_mode": "Markdown"})
+    
+    verify_prompt = f"""You are an expert fact-checker and exam reviewer for {active_exam_name}.
+Below is a JSON containing multiple-choice questions generated by an AI.
+Your job is to independently verify EVERY question. 
+
+TASK:
+1. Ensure the `correct_option_id` (0-based index) actually points to the factually correct option. 
+2. If the answer is wrong, correct the `correct_option_id` to point to the right answer, or re-write the options to make it accurate.
+3. Fix any misleading information in the `explanation`.
+
+CRITICAL RULES:
+1. Explanations strictly under 190 chars. Options under 95 chars.
+2. `correct_option_id` MUST be a 0-based index (0, 1, 2, or 3).
+3. Return ONLY valid JSON matching the exact original structure: {{"questions": [...]}}
+
+INPUT JSON TO VERIFY:
+{json.dumps({"questions": quiz_data}, indent=2)}"""
+
+    for provider, model in models_to_try:
+        print(f"🔍 Attempting verification with {model}...")
+        if provider == "gemini" and gemini_key:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
+            payload = {
+                "contents": [{"parts": [{"text": verify_prompt}]}],
+                "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
+            }
+            status, resp_json = post_json(url, payload)
+            if status == 200:
+                try:
+                    raw_content = resp_json['candidates'][0]['content']['parts'][0]['text']
+                    raw_content = re.sub(r'^```(?:json)?\n?|```$', '', raw_content.strip(), flags=re.IGNORECASE).strip()
+                    parsed = json.loads(raw_content).get("questions", [])
+                    if parsed:
+                        quiz_data = parsed  # Override with VERIFIED data
+                        ver_tokens = resp_json.get('usageMetadata', {}).get('totalTokenCount', 0)
+                        ver_model = model
+                        print("✅ Verification successful.")
+                        break
+                except Exception:
+                    pass
+
+        elif provider == "groq" and groq_key:
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {groq_key}"}
+            payload = {
+                "model": model,
+                "messages": [{"role": "system", "content": verify_prompt}],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.1
+            }
+            status, resp_json = post_json(url, payload, headers)
+            if status == 200:
+                try:
+                    raw_content = resp_json['choices'][0]['message']['content']
+                    raw_content = re.sub(r'^```(?:json)?\n?|```$', '', raw_content.strip(), flags=re.IGNORECASE).strip()
+                    parsed = json.loads(raw_content).get("questions", [])
+                    if parsed:
+                        quiz_data = parsed  # Override with VERIFIED data
+                        ver_tokens = resp_json.get('usage', {}).get('total_tokens', 0)
+                        ver_model = model
+                        print("✅ Verification successful.")
+                        break 
+                except Exception:
+                    pass
 
 # --- 6. SAVE USAGE & DISPATCH QUIZ ---
-if quiz_data and successful_model:
-    usage_data["usage"][successful_model]["tokens_used"] += tokens_consumed_this_run
-    usage_data["usage"][successful_model]["requests_used"] += 1
+if quiz_data and gen_model:
+    # Update tracker with generation tokens
+    usage_data["usage"][gen_model]["tokens_used"] += gen_tokens
+    usage_data["usage"][gen_model]["requests_used"] += 1
+    # Update tracker with verification tokens
+    if ver_model:
+        if ver_model not in usage_data["usage"]:
+            usage_data["usage"][ver_model] = {"tokens_used": 0, "requests_used": 0}
+        usage_data["usage"][ver_model]["tokens_used"] += ver_tokens
+        usage_data["usage"][ver_model]["requests_used"] += 1
     save_tracker()
 
     for i, q in enumerate(quiz_data, 1):
@@ -314,6 +351,10 @@ if quiz_data and successful_model:
         })
         time.sleep(1.2)
         
-    post_json(tg_url, {"chat_id": chat_id, "text": f"✅ Quiz generated successfully using `{successful_model}` (*{tokens_consumed_this_run}* tokens).", "parse_mode": "Markdown"})
+    total_tokens = gen_tokens + ver_tokens
+    footer_text = f"✅ Quiz generated successfully using `{gen_model}`."
+    if ver_model:
+        footer_text += f"\n🔍 Verified by `{ver_model}`.\n*(Total tokens: {total_tokens})*"
+    post_json(tg_url, {"chat_id": chat_id, "text": footer_text, "parse_mode": "Markdown"})
 else:
     post_json(tg_url, {"chat_id": chat_id, "text": "⚠️ Failed to generate quiz across all fallback models. Please try again."})
