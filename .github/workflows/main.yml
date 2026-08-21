@@ -31,8 +31,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Dependencies
-        run: pip install requests
+      # NOTE: Dependency step removed entirely! Python script now runs natively.
 
       # --- 🎲 RUN QUIZ GENERATOR (WITH BUILT-IN AUTH GATE) ---
       - name: Run Quiz Generator
