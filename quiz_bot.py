@@ -3,8 +3,26 @@ import sys
 import json
 import re
 import time
-import requests
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta, timezone
+
+# --- HELPER: ZERO-DEPENDENCY HTTP REQUESTS ---
+def post_json(url, payload=None, headers=None, timeout=35):
+    headers = headers or {}
+    if "Content-Type" not in headers:
+        headers["Content-Type"] = "application/json"
+        
+    data = json.dumps(payload).encode('utf-8') if payload else None
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.getcode(), json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode('utf-8'))
+    except Exception as e:
+        return 500, {"error": str(e)}
 
 # --- 1. SETUP & ENVIRONMENT VARIABLES ---
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -19,7 +37,6 @@ groq_key = os.environ.get("GROQ_API_KEY", "").strip()
 exam_name = os.environ.get("EXAM_NAME", "Competitive Examination").strip()
 
 # --- 2. LAYER 1: SILENT AUTHORIZATION GATE ---
-# If the Chat ID doesn't match, we do absolutely nothing and stop execution silently.
 if not chat_id or chat_id != allowed_chat_id:
     print(f"⛔ Unauthorized access attempt from Chat ID: {chat_id}. Stopping silently.")
     sys.exit(0)
@@ -60,36 +77,36 @@ def save_tracker():
 load_tracker()
 
 # --- 4. LAYER 2: LIGHTWEIGHT INTENT CHECKER ---
-# Strip bot commands. If it's just /start, default the text to "Hello" so it triggers a casual reply.
 clean_request = re.sub(r'^\s*/(?:start|quiz|random)(?:@\w+)?\s*', '', user_request, flags=re.IGNORECASE).strip()
 if not clean_request:
     clean_request = "Hello"
 
 intent_prompt = f"""Analyze the user's message: "{clean_request}"
 Classify it into EXACTLY ONE of these categories:
-1. "casual": Greetings, thanks, general chat, or asking for help (e.g., 'hi', 'thank you', 'how are you').
-2. "quiz": Any educational topic, subject, or request for questions (e.g., 'Fundamental Rights', 'history', 'quiz me on science').
+1. "casual": Greetings, thanks, general chat, or asking for help.
+2. "quiz": Any educational topic, subject, or request for questions.
 
 Return ONLY valid JSON matching this structure:
 {{
   "intent": "casual" or "quiz",
-  "reply": "If casual, write a short, friendly reply (max 10 words) like 'Hello! How can I help you today?'. If quiz, leave empty."
+  "reply": "If casual, write a short, friendly reply. If quiz, leave empty."
 }}"""
 
-intent = "quiz" # Default to quiz if the check fails
+intent = "quiz"
 casual_reply = "Hello! How can I help you study today?"
 
-print("🔄 Running lightweight intent check (gemini-3.1-flash-lite)...")
+print("🔄 Running lightweight intent check...")
 if gemini_key:
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={gemini_key}"
-        payload = {
-            "contents": [{"parts": [{"text": intent_prompt}]}],
-            "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"}
-        }
-        resp = requests.post(url, json=payload, timeout=15)
-        if resp.status_code == 200:
-            resp_json = resp.json()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={gemini_key}"
+    payload = {
+        "contents": [{"parts": [{"text": intent_prompt}]}],
+        "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"}
+    }
+    
+    status, resp_json = post_json(url, payload, timeout=15)
+    
+    if status == 200:
+        try:
             raw_content = resp_json['candidates'][0]['content']['parts'][0]['text']
             raw_content = re.sub(r'^```(?:json)?\n?|```$', '', raw_content.strip(), flags=re.IGNORECASE).strip()
             parsed = json.loads(raw_content)
@@ -98,34 +115,31 @@ if gemini_key:
             if parsed.get("reply"):
                 casual_reply = parsed.get("reply")
                 
-            # Log lightweight model usage
             tokens_used = resp_json.get('usageMetadata', {}).get('totalTokenCount', 0)
             usage_data["usage"]["gemini-3.1-flash-lite"]["tokens_used"] += tokens_used
             usage_data["usage"]["gemini-3.1-flash-lite"]["requests_used"] += 1
-    except Exception as e:
-        print(f"⚠️ Intent check failed, defaulting to quiz: {e}")
+        except Exception as e:
+            print(f"⚠️ JSON parsing failed: {e}")
+    else:
+        print(f"⚠️ Intent API Error ({status}): {resp_json}. Defaulting to quiz.")
 
 # If casual, reply and exit immediately
 if intent == "casual":
-    requests.post(
-        f"https://api.telegram.org/bot{telegram_token}/sendMessage",
-        json={"chat_id": chat_id, "text": casual_reply}
-    )
+    tg_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+    post_json(tg_url, {"chat_id": chat_id, "text": casual_reply})
     save_tracker()
     print("✅ Handled casually. Exiting.")
     sys.exit(0)
 
 # --- 5. QUIZ GENERATION FLOW ---
-requests.post(
-    f"https://api.telegram.org/bot{telegram_token}/sendMessage",
-    json={"chat_id": chat_id, "text": f"⏳ *Drafting High-Difficulty Quiz on:* _{clean_request}_\n_Consulting AI Examiner..._", "parse_mode": "Markdown"}
-)
+tg_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+post_json(tg_url, {"chat_id": chat_id, "text": f"⏳ *Drafting High-Difficulty Quiz on:* _{clean_request}_\n_Consulting AI Examiner..._", "parse_mode": "Markdown"})
 
 system_prompt = f"""You are the most ruthless, expert question setter for the {exam_name}.
 Your task is to create ultra-high-difficulty, conceptually rigorous Multiple Choice Questions (MCQs) based on the user's prompt.
 
 QUESTION COUNT INSTRUCTION:
-If the user specifies a question count (e.g., "10 questions", "3 questions"), produce EXACTLY that count. Max 10. Otherwise, produce 4 questions.
+If the user specifies a question count (e.g., "10 questions"), produce EXACTLY that count. Max 10. Otherwise, produce 4 questions.
 
 CRITICAL RULES:
 1. Explanations strictly under 190 characters. Options under 95 characters.
@@ -141,7 +155,6 @@ CRITICAL RULES:
   ]
 }}"""
 
-# UNIFIED FALLBACK LIST (ALL 9 MODELS)
 models_to_try = [
     ("gemini", "gemini-3.7-flash"),
     ("groq", "openai/gpt-oss-120b"),
@@ -167,10 +180,10 @@ for provider, model in models_to_try:
             "contents": [{"parts": [{"text": system_prompt + "\n\nTopic / Request: " + clean_request}]}],
             "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json"}
         }
-        try:
-            response = requests.post(url, json=payload, timeout=35)
-            if response.status_code == 200:
-                resp_json = response.json()
+        status, resp_json = post_json(url, payload)
+        
+        if status == 200:
+            try:
                 raw_content = resp_json['candidates'][0]['content']['parts'][0]['text']
                 raw_content = re.sub(r'^```(?:json)?\n?|```$', '', raw_content.strip(), flags=re.IGNORECASE).strip()
                 parsed = json.loads(raw_content).get("questions", [])
@@ -180,21 +193,24 @@ for provider, model in models_to_try:
                     successful_model = model
                     print(f"✅ Success with {model}")
                     break
-        except Exception as e:
-            print(f"⚠️ Error with {model}: {e}")
+            except Exception as e:
+                print(f"⚠️ Parsing error with {model}: {e}")
+        else:
+            print(f"⚠️ API error with {model}: {resp_json}")
 
     elif provider == "groq" and groq_key:
-        headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {groq_key}"}
         payload = {
             "model": model,
             "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Topic: {clean_request}"}],
             "response_format": {"type": "json_object"},
             "temperature": 0.3
         }
-        try:
-            response = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=35)
-            if response.status_code == 200:
-                resp_json = response.json()
+        status, resp_json = post_json(url, payload, headers)
+        
+        if status == 200:
+            try:
                 raw_content = resp_json['choices'][0]['message']['content']
                 raw_content = re.sub(r'^```(?:json)?\n?|```$', '', raw_content.strip(), flags=re.IGNORECASE).strip()
                 parsed = json.loads(raw_content).get("questions", [])
@@ -204,8 +220,10 @@ for provider, model in models_to_try:
                     successful_model = model
                     print(f"✅ Success with {model}")
                     break 
-        except Exception as e:
-            print(f"⚠️ Error with {model}: {e}")
+            except Exception as e:
+                print(f"⚠️ Parsing error with {model}: {e}")
+        else:
+            print(f"⚠️ API error with {model}: {resp_json}")
 
 # --- 6. SAVE USAGE & DISPATCH QUIZ ---
 if quiz_data and successful_model:
@@ -221,14 +239,12 @@ if quiz_data and successful_model:
         poll_question = question_text
 
         if len(question_text) > 300:
-            requests.post(
-                f"https://api.telegram.org/bot{telegram_token}/sendMessage",
-                json={"chat_id": chat_id, "text": f"📋 *Q{i}.* {question_text}", "parse_mode": "Markdown"}
-            )
+            post_json(tg_url, {"chat_id": chat_id, "text": f"📋 *Q{i}.* {question_text}", "parse_mode": "Markdown"})
             time.sleep(1.0)
             poll_question = f"Select correct option for Q{i} above:"
 
-        requests.post(f"https://api.telegram.org/bot{telegram_token}/sendPoll", json={
+        poll_url = f"https://api.telegram.org/bot{telegram_token}/sendPoll"
+        post_json(poll_url, {
             "chat_id": chat_id, 
             "question": poll_question, 
             "options": options, 
@@ -239,12 +255,6 @@ if quiz_data and successful_model:
         })
         time.sleep(1.2)
         
-    requests.post(
-        f"https://api.telegram.org/bot{telegram_token}/sendMessage",
-        json={"chat_id": chat_id, "text": f"✅ Quiz generated successfully using `{successful_model}` (*{tokens_consumed_this_run}* tokens).", "parse_mode": "Markdown"}
-    )
+    post_json(tg_url, {"chat_id": chat_id, "text": f"✅ Quiz generated successfully using `{successful_model}` (*{tokens_consumed_this_run}* tokens).", "parse_mode": "Markdown"})
 else:
-    requests.post(
-        f"https://api.telegram.org/bot{telegram_token}/sendMessage",
-        json={"chat_id": chat_id, "text": "⚠️ Failed to generate quiz across all fallback models. Please try again."}
-    )
+    post_json(tg_url, {"chat_id": chat_id, "text": "⚠️ Failed to generate quiz across all fallback models. Please try again."})
