@@ -53,6 +53,14 @@ exam_name = os.environ.get("EXAM_NAME", "Competitive Examination").strip()
 # --- 2. LAYER 1: SILENT AUTHORIZATION GATE ---
 if not chat_id or chat_id != allowed_chat_id:
     print(f"⛔ Unauthorized access attempt from Chat ID: {chat_id}. Stopping silently.")
+    
+    # Send an alert to your personal/allowed Chat ID
+    if allowed_chat_id and telegram_token:
+        alert_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+        alert_text = f"⚠️ *Unauthorized Access Attempt*\nAn unknown user with Chat ID `{chat_id}` just tried to use your bot.\n\n*Their message:* {user_request}"
+        post_json(alert_url, {"chat_id": allowed_chat_id, "text": alert_text, "parse_mode": "Markdown"})
+        
+    # Exit so the unauthorized user gets no response
     sys.exit(0)
 
 # --- 3. USAGE TRACKER SETUP ---
