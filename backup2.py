@@ -301,6 +301,7 @@ TASK:
 4. 🛑 CRITICAL: VERIFY ENTIRELY IN ENGLISH. DO NOT TRANSLATE.
 5. Most important: check statements one by one again and validate if correct and check if given answer is correct.
 6. explanation should also be validated.
+7. Act as a strict independent fact-checker: rigorously verify all historical and factual claims against established records, and explicitly correct any false premises or incorrect answer keys
 
 CRITICAL RULES:
 1. Explanations strictly under 190 chars. Options under 95 chars.
