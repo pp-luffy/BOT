@@ -224,6 +224,19 @@ difficulty_map = {
 }
 difficulty_instruction = difficulty_map.get(active_difficulty, difficulty_map[3])
 
+# --- DYNAMIC TEMPERATURE SCALING ---
+temp_map = {
+    1: {"temp": 0.70, "top_p": 0.85},
+    2: {"temp": 0.75, "top_p": 0.90},
+    3: {"temp": 0.80, "top_p": 0.95},
+    4: {"temp": 0.85, "top_p": 0.95},
+    5: {"temp": 0.95, "top_p": 0.98}
+}
+
+gen_settings = temp_map.get(active_difficulty, temp_map[3])
+gen_temp = gen_settings["temp"]
+gen_top_p = gen_settings["top_p"]
+
 system_prompt = f"""You are an expert question setter and examiner for {active_exam_name}.
 Your task is to create Multiple Choice Questions (MCQs) based on the user's prompt.
 
@@ -234,8 +247,9 @@ EXAM STYLE & QUALITY INSTRUCTIONS:
 1. TARGET DIFFICULTY: Strictly adhere to the requested {difficulty_instruction}. Adjust the complexity of the concepts and distractors accordingly.
 2. QUESTION FORMAT: For levels 3, 4, and 5, use complex multi-statement formats in the QUESTION BODY. Example: "Consider the following statements regarding [Topic]: 1. [Statement A] 2. [Statement B]. Which is correct?"
 3. Keep the actual options extremely short (e.g., "1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2") so they fit inside Telegram's strict limits.
-4. 🛑 CRITICAL: GENERATE ENTIRELY IN ENGLISH, regardless of the target exam.
-5. Always independently verify specific factual claims against authoritative sources.
+4. 🛑 NOVELTY & RANDOMNESS: Use the GENERATION SEED to guarantee absolute novelty. NEVER generate standard, textbook, or overused questions. Explore obscure, highly specific, and creative sub-topics.
+5. 🛑 CRITICAL: GENERATE ENTIRELY IN ENGLISH, regardless of the target exam.
+6. Always independently verify specific factual claims against authoritative sources.
 
 QUESTION COUNT INSTRUCTION:
 If the user specifies a count, you MUST produce EXACTLY that count (Max 15). Otherwise, produce 4 questions. DO NOT STOP EARLY.
@@ -269,12 +283,17 @@ gen_model = None
 gen_tokens = 0
 
 for provider, model in models_to_try:
-    print(f"🔄 Attempting generation with {model}...")
+    print(f"🔄 Attempting generation with {model} at Temp: {gen_temp}...")
     if provider == "gemini" and gemini_key:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
         payload = {
             "contents": [{"parts": [{"text": system_prompt + "\n\nTopic / Request: " + clean_request}]}],
-            "generationConfig": {"temperature": 0.75, "maxOutputTokens": 4096, "responseMimeType": "application/json"}
+            "generationConfig": {
+                "temperature": gen_temp, 
+                "topP": gen_top_p, 
+                "maxOutputTokens": 4096, 
+                "responseMimeType": "application/json"
+            }
         }
         status, resp_json = post_json(url, payload)
         if status == 200:
@@ -297,7 +316,8 @@ for provider, model in models_to_try:
             "model": model,
             "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Topic: {clean_request}"}],
             "response_format": {"type": "json_object"},
-            "temperature": 0.75,
+            "temperature": gen_temp,
+            "top_p": gen_top_p,
             "max_tokens": 4096 
         }
         status, resp_json = post_json(url, payload, headers)
@@ -313,7 +333,6 @@ for provider, model in models_to_try:
                     break 
             except Exception:
                 pass
-
 
 # --- 5.5 LAYER: VERIFICATION AND CORRECTION LOOP (BATCHED) ---
 ver_models_used = set()
@@ -402,13 +421,11 @@ INPUT JSON TO VERIFY:
                     except Exception:
                         pass
         
-        # If all backup models failed for this specific chunk, keep the original unverified chunk
         if not chunk_verified:
             print("⚠️ All verification models failed for this chunk. Appending unverified original.")
             verified_quiz_data.extend(chunk)
 
     quiz_data = verified_quiz_data
-
 
 # --- 5.7 LAYER: CHEAP TRANSLATION TO ODIA (BATCHED) ---
 trans_tokens = 0
@@ -463,7 +480,6 @@ INPUT JSON:
 # --- 6. SAVE USAGE & DISPATCH QUIZ ---
 if quiz_data and gen_model:
     record_usage(gen_model, gen_tokens)
-    # Verification & Translation tokens were recorded inside their batch loops dynamically!
     save_tracker()
 
     for i, q in enumerate(quiz_data, 1):
