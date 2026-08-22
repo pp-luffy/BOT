@@ -245,11 +245,12 @@ Your task is to create Multiple Choice Questions (MCQs) based on the user's prom
 
 EXAM STYLE & QUALITY INSTRUCTIONS:
 1. TARGET DIFFICULTY: Strictly adhere to the requested {difficulty_instruction}. Adjust the complexity of the concepts and distractors accordingly.
-2. QUESTION FORMAT: For levels 3, 4, and 5, use complex multi-statement formats in the QUESTION BODY. Example: "Consider the following statements regarding [Topic]: 1. [Statement A] 2. [Statement B]. Which is correct?"
-3. Keep the actual options extremely short (e.g., "1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2") so they fit inside Telegram's strict limits.
-4. 🛑 NOVELTY & RANDOMNESS: Use the GENERATION SEED to guarantee absolute novelty. NEVER generate standard, textbook, or overused questions. Explore obscure, highly specific, and creative sub-topics.
-5. 🛑 CRITICAL: GENERATE ENTIRELY IN ENGLISH, regardless of the target exam.
-6. Always independently verify specific factual claims against authoritative sources.
+2. 🛑 SYLLABUS & GEOGRAPHICAL CONTEXT: The questions MUST strictly align with the standard syllabus of the {active_exam_name}. If it is an Indian competitive exam (e.g., UPSC, State PSCs), strongly anchor historical, political, and economic topics strictly to the Indian context and their impact on India. DO NOT include irrelevant foreign domestic trivia unless explicitly asked.
+3. QUESTION FORMAT: For levels 3, 4, and 5, use complex multi-statement formats in the QUESTION BODY. Example: "Consider the following statements regarding [Topic]: 1. [Statement A] 2. [Statement B]. Which is correct?"
+4. Keep the actual options extremely short (e.g., "1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2") so they fit inside Telegram's strict limits.
+5. 🛑 NOVELTY & RANDOMNESS: Use the GENERATION SEED to guarantee absolute novelty. NEVER generate standard, textbook, or overused questions. Explore obscure, highly specific, and creative sub-topics.
+6. 🛑 CRITICAL: GENERATE ENTIRELY IN ENGLISH, regardless of the target exam.
+7. Always independently verify specific factual claims against authoritative sources.
 
 QUESTION COUNT INSTRUCTION:
 If the user specifies a count, you MUST produce EXACTLY that count (Max 15). Otherwise, produce 4 questions. DO NOT STOP EARLY.
