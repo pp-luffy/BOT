@@ -299,6 +299,8 @@ TASK:
 2. If the answer is wrong, correct the `correct_option_id` to point to the right answer, or re-write the options to make it accurate.
 3. Fix any misleading information in the `explanation`.
 4. 🛑 CRITICAL: VERIFY ENTIRELY IN ENGLISH. DO NOT TRANSLATE.
+5. Most important: check statements one by one again and validate if correct and check if given answer is correct.
+6. explanation should also be validated.
 
 CRITICAL RULES:
 1. Explanations strictly under 190 chars. Options under 95 chars.
