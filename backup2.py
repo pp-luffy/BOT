@@ -185,10 +185,8 @@ if intent == "casual":
     save_tracker()
     sys.exit(0)
 
-# --- 5. QUIZ GENERATION FLOW ---
+# --- 5. QUIZ GENERATION FLOW (ENGLISH ONLY) ---
 active_exam_name = usage_data["users"][hashed_user_id].get("exam", default_exam_name)
-
-# Language switch: forces pure Odia script if Odia is specified, otherwise English
 target_language = "Odia" if ("odia" in active_exam_name.lower() or "odia" in clean_request.lower()) else "English"
 
 tg_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
@@ -199,14 +197,14 @@ random_seed = int(time.time() * 1000)
 system_prompt = f"""You are the most ruthless and expert question setter for {active_exam_name}.
 Your task is to create ultra-high-difficulty, conceptually rigorous Multiple Choice Questions (MCQs) based on the user's prompt.
 
-[GENERATION SEED: {random_seed} - Ensure completely NOVEL and non-repetitive outputs]
+[GENERATION SEED: {random_seed}]
 
 EXAM STYLE & QUALITY INSTRUCTIONS:
 1. STRICTLY AVOID basic factual, direct definition, or memory-based questions.
 2. Focus on conceptual clarity, multi-faceted analysis, interlinkages, and application of knowledge.
 3. For conceptual depth, place complex statements IN THE QUESTION BODY. Example: "Consider the following statements regarding [Topic]: 1. [Statement A] 2. [Statement B]. Which of the statements given above is/are correct?"
 4. Keep the actual options extremely short (e.g., "1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2") so they fit inside Telegram's strict limits.
-5. 🛑 CRITICAL LANGUAGE RULE: ALL OUTPUT (questions, options, and explanations) MUST BE STRICTLY IN {target_language.upper()}. Do NOT mix languages. If {target_language.upper()} is Odia, use authentic Odia script and vocabulary appropriate for a high-level competitive academic exam.
+5. 🛑 CRITICAL: GENERATE ENTIRELY IN ENGLISH, regardless of the target exam.
 
 QUESTION COUNT INSTRUCTION:
 If the user specifies a count, you MUST produce EXACTLY that count (Max 15). Otherwise, produce 4 questions. DO NOT STOP EARLY.
@@ -240,7 +238,7 @@ gen_model = None
 gen_tokens = 0
 
 for provider, model in models_to_try:
-    print(f"🔄 Attempting generation with {model} in {target_language}...")
+    print(f"🔄 Attempting generation with {model}...")
     if provider == "gemini" and gemini_key:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
         payload = {
@@ -285,7 +283,7 @@ for provider, model in models_to_try:
             except Exception:
                 pass
 
-# --- 5.5 LAYER: VERIFICATION AND CORRECTION LOOP ---
+# --- 5.5 LAYER: VERIFICATION AND CORRECTION LOOP (ENGLISH ONLY) ---
 ver_model = None
 ver_tokens = 0
 
@@ -300,7 +298,7 @@ TASK:
 1. Ensure the `correct_option_id` (0-based index) actually points to the factually correct option. 
 2. If the answer is wrong, correct the `correct_option_id` to point to the right answer, or re-write the options to make it accurate.
 3. Fix any misleading information in the `explanation`.
-4. 🛑 CRITICAL LANGUAGE CHECK: Ensure the entire output is strictly in {target_language.upper()}. If the generator hallucinated any language mismatch, fix it completely in {target_language.upper()}.
+4. 🛑 CRITICAL: VERIFY ENTIRELY IN ENGLISH. DO NOT TRANSLATE.
 
 CRITICAL RULES:
 1. Explanations strictly under 190 chars. Options under 95 chars.
@@ -359,11 +357,47 @@ INPUT JSON TO VERIFY:
                 except Exception:
                     pass
 
+# --- 5.7 LAYER: CHEAP TRANSLATION TO ODIA ---
+trans_tokens = 0
+trans_model = None
+
+if quiz_data and target_language == "Odia" and gemini_key:
+    post_json(tg_url, {"chat_id": chat_id, "text": "🔤 *Translating into Odia...*", "parse_mode": "Markdown"})
+    
+    translation_prompt = f"""You are an expert translator. 
+Translate the 'question', 'options', and 'explanation' values in the following JSON into academic Odia suitable for a competitive exam.
+DO NOT change the 'correct_option_id' numbers. DO NOT change the JSON keys.
+Return ONLY valid JSON matching the exact original structure.
+
+INPUT JSON:
+{json.dumps({"questions": quiz_data}, ensure_ascii=False)}"""
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={gemini_key}"
+    payload = {
+        "contents": [{"parts": [{"text": translation_prompt}]}],
+        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
+    }
+    status, resp_json = post_json(url, payload)
+    
+    if status == 200:
+        try:
+            raw_content = resp_json['candidates'][0]['content']['parts'][0]['text']
+            raw_content = re.sub(r'^```(?:json)?\n?|```$', '', raw_content.strip(), flags=re.IGNORECASE).strip()
+            parsed = json.loads(raw_content).get("questions", [])
+            if parsed:
+                quiz_data = parsed
+                trans_tokens = resp_json.get('usageMetadata', {}).get('totalTokenCount', 0)
+                trans_model = "gemini-3.1-flash-lite"
+        except Exception:
+            pass
+
 # --- 6. SAVE USAGE & DISPATCH QUIZ ---
 if quiz_data and gen_model:
     record_usage(gen_model, gen_tokens)
     if ver_model:
         record_usage(ver_model, ver_tokens)
+    if trans_model:
+        record_usage(trans_model, trans_tokens)
     
     save_tracker()
 
@@ -391,10 +425,14 @@ if quiz_data and gen_model:
         })
         time.sleep(1.2)
         
-    total_tokens = gen_tokens + ver_tokens
+    total_tokens = gen_tokens + ver_tokens + trans_tokens
     footer_text = f"✅ Generated {len(quiz_data)} conceptual questions in {target_language} using `{gen_model}`."
     if ver_model:
-        footer_text += f"\n🔍 Verified by `{ver_model}`.\n*(Total tokens: {total_tokens})*"
+        footer_text += f"\n🔍 Verified by `{ver_model}`."
+    if trans_model:
+        footer_text += f"\n🔤 Translated by `{trans_model}`."
+    footer_text += f"\n*(Total tokens: {total_tokens})*"
+        
     post_json(tg_url, {"chat_id": chat_id, "text": footer_text, "parse_mode": "Markdown"})
 else:
     post_json(tg_url, {"chat_id": chat_id, "text": "⚠️ Failed to generate quiz across all fallback models. Please try again."})
