@@ -7,24 +7,24 @@
       "difficulty": 5,
       "usage": {
         "gemini-3.1-flash-lite": {
-          "tokens_used": 10606,
-          "requests_used": 32
+          "tokens_used": 10976,
+          "requests_used": 33
         },
         "openai/gpt-oss-120b": {
-          "tokens_used": 73035,
-          "requests_used": 26
+          "tokens_used": 77201,
+          "requests_used": 27
         },
         "gemini-3.7-flash": {
           "tokens_used": 15571,
           "requests_used": 5
         },
         "gemini-3.6-flash": {
-          "tokens_used": 40673,
-          "requests_used": 9
+          "tokens_used": 44664,
+          "requests_used": 10
         },
         "gemini-3.5-flash": {
-          "tokens_used": 7659,
-          "requests_used": 2
+          "tokens_used": 11755,
+          "requests_used": 3
         },
         "openai/gpt-oss-20b": {
           "tokens_used": 39392,
