@@ -280,7 +280,7 @@ generation_models_to_try = [
     ("groq", "openai/gpt-oss-20b")
 ]
 
-# 🛑 VERIFICATION MODELS (Groq First)
+# 🛑 VERIFICATION MODELS (Groq First, No Pro Model)
 verification_models_to_try = [
     ("groq", "openai/gpt-oss-120b"),
     ("gemini", "gemini-3.7-flash"),
@@ -290,10 +290,9 @@ verification_models_to_try = [
     ("groq", "openai/gpt-oss-20b")
 ]
 
-# 👑 VIP USER INJECTION (Admin only & Level 5 only)
+# 👑 VIP USER INJECTION (Admin only & Level 5 only) - ONLY FOR GENERATION
 if chat_id == admin_chat_id and active_difficulty == 5:
     generation_models_to_try.insert(0, ("gemini", "gemini-3.1-pro"))
-    verification_models_to_try.insert(0, ("gemini", "gemini-3.1-pro"))
 
 quiz_data = None
 gen_model = None
