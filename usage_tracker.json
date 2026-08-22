@@ -26,6 +26,15 @@
           "requests_used": 1
         }
       }
+    },
+    "4d169644d52a7dcb": {
+      "exam": "OPSC ASO",
+      "usage": {
+        "gemini-3.1-flash-lite": {
+          "tokens_used": 261,
+          "requests_used": 1
+        }
+      }
     }
   }
 }
