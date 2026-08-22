@@ -250,6 +250,7 @@ EXAM STYLE & QUALITY INSTRUCTIONS:
 4. 🛑 NOVELTY & RANDOMNESS: Use the GENERATION SEED to guarantee absolute novelty. NEVER generate standard, textbook, or overused questions. Explore obscure, highly specific, and creative sub-topics.
 5. 🛑 CRITICAL: GENERATE ENTIRELY IN ENGLISH, regardless of the target exam.
 6. Always independently verify specific factual claims against authoritative sources.
+7. Check the exam name and how difficult it sets paper and region and type of question. (ex-> UPSC: Need more India related question)
 
 QUESTION COUNT INSTRUCTION:
 If the user specifies a count, you MUST produce EXACTLY that count (Max 15). Otherwise, produce 4 questions. DO NOT STOP EARLY.
