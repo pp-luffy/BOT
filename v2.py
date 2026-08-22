@@ -270,7 +270,18 @@ CRITICAL JSON RULES:
   ]
 }}"""
 
-models_to_try = [
+# 🛑 GENERATION MODELS (Gemini First)
+generation_models_to_try = [
+    ("gemini", "gemini-3.7-flash"),
+    ("groq", "openai/gpt-oss-120b"),
+    ("gemini", "gemini-3.6-flash"),
+    ("gemini", "gemini-3.5-flash"),
+    ("groq", "qwen/qwen3.6-27b"),
+    ("groq", "openai/gpt-oss-20b")
+]
+
+# 🛑 VERIFICATION MODELS (Groq First)
+verification_models_to_try = [
     ("groq", "openai/gpt-oss-120b"),
     ("gemini", "gemini-3.7-flash"),
     ("gemini", "gemini-3.6-flash"),
@@ -279,11 +290,16 @@ models_to_try = [
     ("groq", "openai/gpt-oss-20b")
 ]
 
+# 👑 VIP USER INJECTION (Admin only & Level 5 only)
+if chat_id == admin_chat_id and active_difficulty == 5:
+    generation_models_to_try.insert(0, ("gemini", "gemini-3.1-pro"))
+    verification_models_to_try.insert(0, ("gemini", "gemini-3.1-pro"))
+
 quiz_data = None
 gen_model = None
 gen_tokens = 0
 
-for provider, model in models_to_try:
+for provider, model in generation_models_to_try:
     print(f"🔄 Attempting generation with {model} at Temp: {gen_temp}...")
     if provider == "gemini" and gemini_key:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
@@ -370,7 +386,7 @@ CRITICAL RULES:
 INPUT JSON TO VERIFY:
 {json.dumps({"questions": chunk}, indent=2)}"""
 
-        for provider, model in models_to_try:
+        for provider, model in verification_models_to_try:
             print(f"🔍 Attempting chunk verification with {model}...")
             if provider == "gemini" and gemini_key:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
