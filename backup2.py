@@ -206,6 +206,7 @@ EXAM STYLE & QUALITY INSTRUCTIONS:
 4. Keep the actual options extremely short (e.g., "1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2") so they fit inside Telegram's strict limits.
 5. 🛑 CRITICAL: GENERATE ENTIRELY IN ENGLISH, regardless of the target exam.
 6. Always independently verify specific factual claims against trusted, authoritative sources before accepting a given explanation as the absolute truth.
+7. Even if a statement is correct, it might not be correct according to the question. Double check it.
 
 QUESTION COUNT INSTRUCTION:
 If the user specifies a count, you MUST produce EXACTLY that count (Max 15). Otherwise, produce 4 questions. DO NOT STOP EARLY.
@@ -305,6 +306,7 @@ TASK:
 6. 🛑 CRITICAL: VERIFY ENTIRELY IN ENGLISH. DO NOT TRANSLATE.
 7. Act as a strict independent fact-checker: rigorously verify all historical and factual claims against established records.
 8. most important: Always independently verify specific factual claims against trusted, authoritative sources before accepting a given explanation as the absolute truth.
+9. most important(2): Even if a statement is correct, it might not be correct according to the question. Double check it.
 
 CRITICAL RULES:
 1. Explanations strictly under 190 chars. Options under 95 chars.
