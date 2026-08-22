@@ -3,15 +3,15 @@
   "unauthorized_alerts": 2,
   "users": {
     "010a2ffb1268fa8b": {
-      "exam": "UPSC Civil Services",
+      "exam": "UPSC",
       "usage": {
         "gemini-3.1-flash-lite": {
-          "tokens_used": 6588,
-          "requests_used": 19
+          "tokens_used": 6849,
+          "requests_used": 20
         },
         "openai/gpt-oss-120b": {
-          "tokens_used": 33379,
-          "requests_used": 14
+          "tokens_used": 36511,
+          "requests_used": 15
         },
         "gemini-3.7-flash": {
           "tokens_used": 2680,
@@ -26,8 +26,8 @@
           "requests_used": 2
         },
         "openai/gpt-oss-20b": {
-          "tokens_used": 18400,
-          "requests_used": 4
+          "tokens_used": 22941,
+          "requests_used": 5
         }
       }
     },
