@@ -10,8 +10,8 @@
           "requests_used": 14
         },
         "openai/gpt-oss-120b": {
-          "tokens_used": 19203,
-          "requests_used": 8
+          "tokens_used": 21055,
+          "requests_used": 9
         },
         "gemini-3.7-flash": {
           "tokens_used": 2680,
@@ -22,8 +22,8 @@
           "requests_used": 3
         },
         "gemini-3.5-flash": {
-          "tokens_used": 4802,
-          "requests_used": 1
+          "tokens_used": 7659,
+          "requests_used": 2
         }
       }
     },
