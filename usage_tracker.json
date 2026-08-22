@@ -6,8 +6,8 @@
       "exam": "UPSC",
       "usage": {
         "gemini-3.1-flash-lite": {
-          "tokens_used": 7893,
-          "requests_used": 24
+          "tokens_used": 8149,
+          "requests_used": 25
         },
         "openai/gpt-oss-120b": {
           "tokens_used": 47438,
