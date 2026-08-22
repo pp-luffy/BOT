@@ -44,15 +44,26 @@ today_str = datetime.now(IST).strftime('%Y-%m-%d')
 
 user_request = os.environ.get("USER_REQUEST", "").strip()
 chat_id = str(os.environ.get("INCOMING_CHAT_ID", "")).strip()
+
 telegram_token = os.environ.get("TELEGRAM_TOKEN", "").strip()
 admin_chat_id = str(os.environ.get("ADMIN_CHAT_ID", "")).strip()
 
-secrets_json = os.environ.get("USER_SECRETS_JSON", "{}")
+# Clean hidden non-breaking spaces that break JSON parsing
+secrets_json = os.environ.get("USER_SECRETS_JSON", "{}").strip().replace("\u00a0", " ")
+
+print("--- DEBUG INFO ---")
 try:
     user_secrets = json.loads(secrets_json)
-except json.JSONDecodeError:
-    print("⚠️ Error: USER_SECRETS_JSON is not a valid JSON string.")
+    print("✅ JSON Secrets parsed successfully!")
+except json.JSONDecodeError as e:
+    print(f"❌ JSON PARSING ERROR: {e}")
+    # repr() will reveal any hidden weird characters that are breaking it
+    print(f"Raw string received: {repr(secrets_json[:100])}...") 
     user_secrets = {}
+
+print(f"🔍 Incoming Chat ID: '{chat_id}'")
+print(f"🔑 Authorized IDs in JSON: {list(user_secrets.keys())}")
+print("------------------")
 
 # Extract user-specific details if authorized
 gemini_key = ""
