@@ -3,11 +3,11 @@
   "unauthorized_alerts": 2,
   "users": {
     "010a2ffb1268fa8b": {
-      "exam": "UPSC Civil Services",
+      "exam": "JEE Mains",
       "usage": {
         "gemini-3.1-flash-lite": {
-          "tokens_used": 248,
-          "requests_used": 1
+          "tokens_used": 507,
+          "requests_used": 2
         }
       }
     }
