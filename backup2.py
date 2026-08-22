@@ -205,6 +205,7 @@ EXAM STYLE & QUALITY INSTRUCTIONS:
 3. For conceptual depth, place complex statements IN THE QUESTION BODY. Example: "Consider the following statements regarding [Topic]: 1. [Statement A] 2. [Statement B]. Which of the statements given above is/are correct?"
 4. Keep the actual options extremely short (e.g., "1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2") so they fit inside Telegram's strict limits.
 5. 🛑 CRITICAL: GENERATE ENTIRELY IN ENGLISH, regardless of the target exam.
+6. Always independently verify specific factual claims against trusted, authoritative sources before accepting a given explanation as the absolute truth.
 
 QUESTION COUNT INSTRUCTION:
 If the user specifies a count, you MUST produce EXACTLY that count (Max 15). Otherwise, produce 4 questions. DO NOT STOP EARLY.
@@ -303,6 +304,7 @@ TASK:
 5. Fix any misleading information or hallucinations in the `explanation`. The explanation must explicitly justify why the right answer is right, and why the others are wrong.
 6. 🛑 CRITICAL: VERIFY ENTIRELY IN ENGLISH. DO NOT TRANSLATE.
 7. Act as a strict independent fact-checker: rigorously verify all historical and factual claims against established records.
+8. most important: Always independently verify specific factual claims against trusted, authoritative sources before accepting a given explanation as the absolute truth.
 
 CRITICAL RULES:
 1. Explanations strictly under 190 chars. Options under 95 chars.
