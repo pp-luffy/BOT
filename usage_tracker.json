@@ -6,8 +6,8 @@
       "exam": "UPSC Civil Services",
       "usage": {
         "gemini-3.1-flash-lite": {
-          "tokens_used": 6329,
-          "requests_used": 18
+          "tokens_used": 6588,
+          "requests_used": 19
         },
         "openai/gpt-oss-120b": {
           "tokens_used": 33379,
