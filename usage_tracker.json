@@ -28,10 +28,18 @@
       }
     },
     "4d169644d52a7dcb": {
-      "exam": "OPSC ASO",
+      "exam": "ASO",
       "usage": {
         "gemini-3.1-flash-lite": {
-          "tokens_used": 261,
+          "tokens_used": 517,
+          "requests_used": 2
+        },
+        "openai/gpt-oss-120b": {
+          "tokens_used": 2034,
+          "requests_used": 1
+        },
+        "gemini-3.7-flash": {
+          "tokens_used": 3298,
           "requests_used": 1
         }
       }
