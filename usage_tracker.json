@@ -3,11 +3,19 @@
   "unauthorized_alerts": 2,
   "users": {
     "010a2ffb1268fa8b": {
-      "exam": "JEE Mains",
+      "exam": "business analytics workera exam",
       "usage": {
         "gemini-3.1-flash-lite": {
-          "tokens_used": 754,
-          "requests_used": 3
+          "tokens_used": 1002,
+          "requests_used": 4
+        },
+        "openai/gpt-oss-120b": {
+          "tokens_used": 1691,
+          "requests_used": 1
+        },
+        "gemini-3.7-flash": {
+          "tokens_used": 2680,
+          "requests_used": 1
         }
       }
     }
