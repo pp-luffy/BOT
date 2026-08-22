@@ -6,12 +6,12 @@
       "exam": "OPSC ASO",
       "usage": {
         "gemini-3.1-flash-lite": {
-          "tokens_used": 1251,
-          "requests_used": 5
+          "tokens_used": 1488,
+          "requests_used": 6
         },
         "openai/gpt-oss-120b": {
-          "tokens_used": 2900,
-          "requests_used": 2
+          "tokens_used": 4704,
+          "requests_used": 3
         },
         "gemini-3.7-flash": {
           "tokens_used": 2680,
@@ -19,6 +19,10 @@
         },
         "gemini-3.6-flash": {
           "tokens_used": 2354,
+          "requests_used": 1
+        },
+        "gemini-3.5-flash": {
+          "tokens_used": 4802,
           "requests_used": 1
         }
       }
